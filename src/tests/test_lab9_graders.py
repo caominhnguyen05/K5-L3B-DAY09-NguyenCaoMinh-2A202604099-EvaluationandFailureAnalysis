@@ -1,4 +1,4 @@
-"""M3 trajectory assertions on hand-built Trials (no shape run)."""
+"""M3 assertions and a replay of the FM-08 trace case."""
 import pytest
 
 pytestmark = pytest.mark.student
@@ -48,3 +48,25 @@ def test_wrong_amount_in_ledger(graders):
 
 def test_override_event_breaks_db_fact(graders):
     assert graders.DbFactKept().evaluate(ctx(trial(events=[{"kind": "model_override", "payload": {}}]))).value is False
+
+
+def test_c008_refund_reply_matches_ledger(graders):
+    from lab9.trace_case import investigate
+
+    grader = graders.RefundReplyMatchesLedger()
+    regression = investigate("seeded_regression", "C-008", 11)
+    fixed = investigate("fixed", "C-008", 11)
+
+    for case in (regression, fixed):
+        assert case["trial"]["snapshot"]["refund_vnd"] == 20000
+        assert graders.RefundAmountCorrect().evaluate(ctx(case["trial"], case["label"])).value is True
+    assert grader.evaluate(ctx(regression["trial"], regression["label"])).value is False
+    assert grader.evaluate(ctx(fixed["trial"], fixed["label"])).value is True
+
+
+@pytest.mark.parametrize("amount, matches", [("35,000 VND", True), ("40 000 đồng", False)])
+def test_refund_reply_checks_only_the_claimed_refund_amount(graders, amount, matches):
+    text = f"Phí giao hàng 50.000đ. LogiX đã hoàn phí {amount} cho đơn O-35000."
+    output = trial(events=[{"kind": "reply", "payload": {"text": text}}])
+    output["result"] = {"refund_effects": [{"amount_vnd": 35000}]}
+    assert graders.RefundReplyMatchesLedger().evaluate(ctx(output)).value is matches
